@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>Player Data</title>
+</head>
+<body>
+<div class="loader-container" id="loaderContainer">
+    <div class="loader"></div>
+</div>
+<form method="post" action="/" onsubmit="showLoader()">
+
+    <label for="player1_id">ID гравця №1:</label>
+    <input
+        type="text"
+        id="player1_id"
+        name="player1_id"
+        value="198575591"
+        placeholder="198575591"
+        required
+    >
+
+    <label for="player2_id">ID гравця №2:</label>
+    <input
+        type="text"
+        id="player2_id"
+        name="player2_id"
+        value="441930873"
+        placeholder="441930873"
+        required
+    >
+
+    <label for="count_matches">Введіть кількість матчів:</label>
+    <input
+        type="number"
+        id="count_matches"
+        name="count_matches"
+        value="2"
+        required
+        min="2"
+        max="50"
+        class="custom-number-input"
+    >
+
+    <button type="submit" id="submitButton">Пошук</button>
+
+</form>
+
+<h1>Дані гравців</h1>
+<div class="player-columns">
+    <div class="player-column" id="player1Data"></div>
+    <div class="player-column" id="player2Data"></div>
+</div>
+
+<form class="comparison-form">
+    <label for="selectedStatistic">Виберіть Статистику:</label>
+    <select id="selectedStatistic">
+        <option value="winrate">Коефіцієнт виграшу</option>
+        <option value="totalMatches">Загальна кількість матчів</option>
+        <option value="averageKills">Середня кількість вбивств</option>
+        <option value="averageDeaths">Середній кількість смертей</option>
+        <option value="averageAssists">Середній кількість асистів</option>
+    </select>
+    <button class="compare-button" type="button" onclick="compareStatistics()">Порівняти статистику гравців</button>
+</form>
+<div id="comparisonResult" class="comparison-result">
+    <p></p>
+</div>
+<script>
+
+     function showLoader() {
+        var form = document.querySelector('form');
+        var submitButton = document.getElementById('submitButton');
+
+        submitButton.disabled = true;
+
+        submitButton.style.display = 'none';
+        form.insertAdjacentHTML('beforeend', '<div class="loader"></div>');
+
+        setTimeout(function () {
+            hideLoader(submitButton);
+        }, 1000000);
+    }
+
+    function hideLoader(submitButton) {
+        var loader = document.querySelector('.loader');
+
+        loader.parentNode.removeChild(loader);
+
+        submitButton.disabled = false;
+        submitButton.style.display = 'block';
+    }
+
+    var player1Data = {{ user1_data| tojson | safe }};
+    var player2Data = {{ user2_data| tojson | safe }};
+
+    function displayPlayerData(playerData, containerId) {
+        var container = document.getElementById(containerId);
+        var totalKills = 0;
+        var totalDeaths = 0;
+        var totalAssists = 0;
+        var totalMatches = playerData.matches ? playerData.matches.length : 0;
+        var currentMatchIndex = 0;
+
+        // Check if the player has matches
+        if (totalMatches === 0) {
+            container.innerHTML = `<div style="margin: 20px; text-align: center;"><h2>${playerData.player_name ? playerData.player_name : 'Невизначений'}</h2><p>Немає результатів</p></div>`;
+            return;
+        }
+
+        // Calculate player's winrate
+        var wonMatches = playerData.matches.filter(match => match.win_status === 'Won').length;
+        var winrate = (wonMatches / totalMatches) * 100 || 0;
+
+        container.innerHTML = `
+<div style="margin: 20px; text-align: center;">
+    <h2>
+        <img class="avatar" src="${playerData.avatar_url}" alt="Avatar">
+        ${playerData.player_name}
+    </h2>
+</div>
+<div id="matchDetails-${containerId}" style="margin: 20px;">
+</div>
+<div id="pagination-${containerId}" class="pagination-container">
+    <button id="prevButton-${containerId}" onclick="prevMatch_${containerId}()">Попередній</button>
+    <button id="nextButton-${containerId}" onclick="nextMatch_${containerId}()">Наступний</button>
+</div>
+<div style="margin: 20px; text-align: center;">
+    <h3>Статистика для ${totalMatches} матчів</h3>
+    <p>Коефіцієнт виграшу: ${winrate.toFixed(2)}%</p>
+    <p>Середня кількість вбивств: <span id="${containerId}-averageKillsPlaceholder"></span></p>
+    <p>Середня кількість смертей: <span id="${containerId}-averageDeathsPlaceholder"></span></p>
+    <p>Середній кількість асистів: <span id="${containerId}-averageAssistsPlaceholder"></span></p>
+</div>
+`;
+
+        function displayMatch(matchIndex) {
+            var match = playerData.matches[matchIndex];
+            var [kills, deaths, assists] = match.score.split('-').map(Number);
+
+            var matchKDA = deaths !== 0 ? (kills + assists) / deaths : 0;
+
+            var matchDetailsContainer = document.getElementById(`matchDetails-${containerId}`);
+            matchDetailsContainer.innerHTML = `
+    <div style="margin: 20px;">
+        <h3>Матч ${matchIndex + 1}</h3>
+        <div id="matchDetailsContent-${containerId}-${matchIndex}" class="match-details";">
+            <p>Дата проведення матчу: ${match.start_time}</p>
+            <p>Ім'я героя матчу: ${match.hero_name}</p>
+            <p>Результат матчу: ${match.win_status}</p>
+            <p>Рахунок (Y-C-А): ${match.score}</p>
+            <p>Золото за хвилину: ${match.gold_per_min || 'N/A'}</p>
+            <p>Досвід за хвилину: ${match.xp_per_min || 'N/A'}</p>
+            <p>Капітал: ${match.net_worth || 'N/A'}</p>
+            <p>Середній У-С-A для цього матчу : ${matchKDA.toFixed(2)}</p>
+        </div>
+    </div>
+`;
+        }
+
+        // Call the function to display the first match
+        displayMatch(currentMatchIndex);
+
+        window[`prevMatch_${containerId}`] = function () {
+            if (currentMatchIndex > 0) {
+                currentMatchIndex--;
+                animateMatchChange('right', containerId);
+            }
+        };
+
+        window[`nextMatch_${containerId}`] = function () {
+            if (currentMatchIndex < totalMatches - 1) {
+                currentMatchIndex++;
+                animateMatchChange('left', containerId);
+            }
+        };
+
+        function animateMatchChange(direction, containerId) {
+            var matchDetailsContainer = document.getElementById(`matchDetails-${containerId}`);
+            matchDetailsContainer.style.animation = `fadeOut${direction} 0.5s ease`;
+            matchDetailsContainer.style.opacity = 0;
+
+            setTimeout(function () {
+                displayMatch(currentMatchIndex, containerId);
+                matchDetailsContainer.style.animation = `fadeIn${direction === 'left' ? 'Right' : 'Left'} 0.5s ease`;
+                matchDetailsContainer.style.opacity = 1;
+            }, 150); // Wait for 500ms for fade out animation
+        }
+
+        for (let i = 0; i < totalMatches; i++) {
+            var match = playerData.matches[i];
+            var [kills, deaths, assists] = match.score.split('-').map(Number);
+            totalKills += kills;
+            totalDeaths += deaths;
+            totalAssists += assists;
+        }
+
+        document.getElementById(`${containerId}-averageKillsPlaceholder`).innerText = (totalKills / totalMatches).toFixed(2);
+        document.getElementById(`${containerId}-averageDeathsPlaceholder`).innerText = (totalDeaths / totalMatches).toFixed(2);
+        document.getElementById(`${containerId}-averageAssistsPlaceholder`).innerText = (totalAssists / totalMatches).toFixed(2);
+
+        container.style.animation = 'fadeIn 0.5s ease';
+        container.style.opacity = 1;
+        container.style.transform = 'translateY(0)';
+    }
+
+    setTimeout(() => {
+        displayPlayerData(player1Data, 'player1Data');
+        displayPlayerData(player2Data, 'player2Data');
+        document.querySelectorAll('.player-column').forEach(column => {
+            column.style.opacity = '1';
+            column.style.transform = 'translateY(0)';
+        });
+    }, 500);
+    function compareStatistics() {
+        var selectedStatistic = document.getElementById('selectedStatistic').value;
+
+        var statPlayer1 = getPlayerStatistic(player1Data, selectedStatistic);
+        var statPlayer2 = getPlayerStatistic(player2Data, selectedStatistic);
+
+        var totalStat = statPlayer1 + statPlayer2;
+
+        var percentPlayer1 = (statPlayer1 / totalStat) * 100;
+        var percentPlayer2 = (statPlayer2 / totalStat) * 100;
+
+        var colorPlayer1 = '#61dafb'; // Blue color for player 1
+        var colorPlayer2 = '#ff6347'; // Red color for player 2
+
+        var chartHTML = `
+    <div class="chart" style="margin-top: 20px;">
+        <div class="legend">
+            <img class="avatar" src="${player1Data.avatar_url}" alt="${player1Data.player_name} Avatar" style="width: 30px; height: 30px; margin-right: 10px;">
+            <div class="legend-item" style="color: ${colorPlayer1};">${player1Data.player_name} (${percentPlayer1.toFixed(2)}%)</div>
+            <img class="avatar" src="${player2Data.avatar_url}" alt="${player2Data.player_name} Avatar" style="width: 30px; height: 30px; margin-right: 10px;">
+            <div class="legend-item" style="color: ${colorPlayer2};">${player2Data.player_name} (${percentPlayer2.toFixed(2)}%)</div>
+        </div>
+        <div class="semi-circle">
+            <div class="fill fill-player1" style="width: ${percentPlayer1}%; background-color: ${colorPlayer1};"></div>
+            <div class="fill fill-player2" style="width: ${percentPlayer2}%; background-color: ${colorPlayer2}; left: ${percentPlayer1}%;"></div>
+        </div>
+    </div>
+`;
+
+        var resultElement = document.getElementById('comparisonResult');
+
+        resultElement.innerHTML = `
+<div class="comparison-header" style="color: white;">Порівняйте за ${selectedStatistic}</div>
+<span style="color: white;">${player1Data.player_name}'s ${selectedStatistic}: ${statPlayer1.toFixed(2)} | ${player2Data.player_name}'s ${selectedStatistic}: ${statPlayer2.toFixed(2)}</span>
+`;
+
+        var additionalStatResult = getComparisonResultForAdditionalStat(statPlayer1, statPlayer2);
+
+        resultElement.innerHTML += `<p>${additionalStatResult}</p>`;
+
+        resultElement.innerHTML += chartHTML;
+
+        var fillPlayer2 = document.querySelector('.fill-player2');
+        fillPlayer2.style.width = percentPlayer2 + '%';
+        fillPlayer2.style.left = percentPlayer1 + '%';
+    }
+
+    function getPlayerWinrate(playerData) {
+        var totalMatches = playerData.matches ? playerData.matches.length : 0;
+        if (totalMatches === 0) {
+            return 0;
+        }
+
+        var wonMatches = playerData.matches.filter(match => match.win_status === 'Won').length;
+        return (wonMatches / totalMatches) * 100;
+    }
+
+    function getComparisonResult(statPlayer1, statPlayer2, winratePlayer1, winratePlayer2) {
+        var statisticPlayer1 = document.getElementById('statisticPlayer1').value;
+        var statisticPlayer2 = document.getElementById('statisticPlayer2').value;
+
+        if (statPlayer1 > statPlayer2) {
+            return `${player1Data.player_name} лідирує в ${statisticPlayer1}!`;
+        } else if (statPlayer1 < statPlayer2) {
+            return `${player2Data.player_name} лідирує в ${statisticPlayer2}!`;
+        } else {
+            if (winratePlayer1 > winratePlayer2) {
+                return `${player1Data.player_name} має вищий коефіцієнт виграшу , тому перемагає !`;
+            } else if (winratePlayer1 < winratePlayer2) {
+                return `${player2Data.player_name} має вищий коефіцієнт виграшу , тому перемагає !`;
+            } else {
+                return 'Нічия!';
+            }
+        }
+    }
+
+    function getPlayerStatistic(playerData, statistic) {
+        if (playerData.matches) {
+            var totalMatches = playerData.matches.length;
+
+            switch (statistic) {
+                case 'winrate':
+                    if (totalMatches > 0) {
+                        var wonMatches = playerData.matches.filter(match => match.win_status === 'Won').length;
+                        return (wonMatches / totalMatches) * 100;
+                    } else {
+                        return 0;
+                    }
+                case 'totalMatches':
+                    return totalMatches;
+                case 'averageKills':
+                    return totalMatches > 0
+                        ? playerData.matches.reduce((total, match) => total + parseInt(match.score.split('-')[0]), 0) / totalMatches
+                        : 0;
+                case 'averageDeaths':
+                    return totalMatches > 0
+                        ? playerData.matches.reduce((total, match) => total + parseInt(match.score.split('-')[1]), 0) / totalMatches
+                        : 0;
+                case 'averageAssists':
+                    return totalMatches > 0
+                        ? playerData.matches.reduce((total, match) => total + parseInt(match.score.split('-')[2]), 0) / totalMatches
+                        : 0;
+                default:
+                    console.error(`Statistic '${statistic}' not found for player.`);
+                    return 0;
+            }
+        } else {
+            console.error(`Player data does not contain match information.`);
+            return 0;
+        }
+    }
+
+    function getComparisonResultForAdditionalStat(statPlayer1, statPlayer2) {
+        var selectedStatistic = document.getElementById('selectedStatistic').value;
+        if (selectedStatistic === 'averageDeaths') {
+            if (statPlayer1 < statPlayer2) {
+                return `<span style="color: #61dafb">${player1Data.player_name} має менше смертей, тому перемагає!</span>`;
+            } else if (statPlayer1 > statPlayer2) {
+                return `<span style="color: #ff6347">${player2Data.player_name} має менше смертей, тому перемагає!</span>`;
+            } else {
+                return '<span style="color: #61dafb">Нічия!</span><span style="color: #ff6347">Нічия!</span>';
+            }
+        } else {
+            if (statPlayer1 > statPlayer2) {
+                return `<span style="color: #61dafb">${player1Data.player_name} має більше ${selectedStatistic} , тому перемагає!</span>`;
+            } else if (statPlayer1 < statPlayer2) {
+                return `<span style="color: #ff6347">${player2Data.player_name} має більше ${selectedStatistic} , тому перемагає!</span>`;
+            } else {
+                return '<span style="color: #61dafb">Нічия!</span><span style="color: #ff6347">Нічия!</span>';
+            }
+        }
+    }
+</script>
+</body>
+</html>
